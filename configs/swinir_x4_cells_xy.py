@@ -1,7 +1,11 @@
+
+
 # 继承官方 SwinIR ×4 配置
 _base_ = ['swinir/swinir_x4s64w8d6e180_8xb4-lr2e-4-500k_df2k.py']
 
 experiment_name = 'swinir_x4_cells_xy_p1p99'
+data_root = '/root/autodl-tmp/datasets/3dFM_cell_SR_bench_dataset/fastz_200_highL/cells_xy_p1p99'
+
 work_dir = f'./results/work_dirs/{experiment_name}'
 save_dir = './results/work_dirs/'
 
@@ -112,11 +116,8 @@ train_dataloader = dict(
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type='BasicImageDataset',
-        data_root='/root/autodl-tmp/datasets/3dFM_cell_SR_bench_dataset/fastz_200_highL/cells_xy_p1p99/train',
-        data_prefix=dict(
-            img='LR_bicubic/X4',
-            gt='HR'
-        ),
+        data_root=data_root + '/train',
+        data_prefix=dict(img=f'LR_bicubic/X{scale}', gt='HR'),
         pipeline=train_pipeline
     )
 )
@@ -128,11 +129,8 @@ val_dataloader = dict(
     persistent_workers=False,
     dataset=dict(
         type='BasicImageDataset',
-        data_root='/root/autodl-tmp/datasets/3dFM_cell_SR_bench_dataset/fastz_200_highL/cells_xy_p1p99/val',
-        data_prefix=dict(
-            img='LR_bicubic/X4',
-            gt='HR'
-        ),
+        data_root=data_root + '/val',
+        data_prefix=dict(img=f'LR_bicubic/X{scale}', gt='HR'),
         pipeline=val_pipeline
     )
 )
