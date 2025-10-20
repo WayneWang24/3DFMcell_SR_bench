@@ -201,7 +201,7 @@ if __name__ == '__main__':
     parser.add_argument('--input_dir', required=True, help='包含 3D tif 的文件夹')
     parser.add_argument('--out_root', required=True, help='输出数据根目录（会创建 cells_xy/yz/xz 子目录）')
     parser.add_argument('--xy_scale', type=int, default=4, help='XY 的下采样倍数（默认 X4）')
-    parser.add_argument('--yzxz_scales', type=int, nargs='*', default=[4], help='为 YZ/XZ 生成的固定倍率 LR 列表，如 2 4 8')
+    parser.add_argument('--yzxz_scales', type=int, nargs='*', default=[2,4,8], help='为 YZ/XZ 生成的固定倍率 LR 列表，如 2 4 8')
     parser.add_argument('--target_z', type=int, default=None, help='目标 Z（如 448）。设置后会额外生成 LR_matched（宽度=round(512/(target_z/Z)))')
     parser.add_argument('--val_ratio', type=float, default=0.1, help='按体划分的验证集比例')
     parser.add_argument('--seed', type=int, default=2025)
