@@ -1,0 +1,53 @@
+# ------------------------------
+# Project-specific ignores
+# ------------------------------
+
+# Ignore mmagic (submodule or external lib)
+mmagic/
+
+# Ignore results under scripts/
+scripts/results/
+
+# ------------------------------
+# Common outputs & results
+# ------------------------------
+*.log
+*.csv
+*.json
+*.pkl
+*.pth
+*.npy
+*.npz
+*.onnx
+*.trt
+
+# Figures / images
+*.png
+*.jpg
+*.jpeg
+*.tiff
+
+# ------------------------------
+# Python / environment ignores
+# ------------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+env/
+venv/
+ENV/
+
+# ------------------------------
+# Jupyter / editor / system
+# ------------------------------
+.ipynb_checkpoints/
+.DS_Store
+.vscode/
+.idea/

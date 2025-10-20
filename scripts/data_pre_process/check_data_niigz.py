@@ -4,12 +4,13 @@ from collections import Counter
 import matplotlib.pyplot as plt
 
 # 数据目录
-data_dir = "/root/autodl-tmp/datasets/fastz_volumes"
+data_dir = "/root/autodl-tmp/datasets/raw_cell_datasets/single_shot_volumes"
 
 shapes = {}
 
 for fname in os.listdir(data_dir):
-    if fname.lower().endswith(".nii.gz"):
+    # 只考虑以 memb 开头的 nii.gz 文件
+    if fname.lower().startswith("memb") and fname.lower().endswith(".nii.gz"):
         fpath = os.path.join(data_dir, fname)
         try:
             img = nib.load(fpath)
@@ -32,10 +33,10 @@ plt.figure(figsize=(10, 5))
 plt.bar(labels, values)
 plt.xticks(rotation=45, ha='right')
 plt.ylabel("文件数")
-plt.title("不同 NIfTI shape 分布")
+plt.title("不同 memb*.nii.gz shape 分布")
 plt.tight_layout()
 
-out_path = "nii_shape_distribution.png"
+out_path = "memb_shape_distribution.png"
 plt.savefig(out_path, dpi=300)
 plt.close()
 
@@ -45,6 +46,6 @@ print(f"✅ 直方图已保存到 {out_path}")
 if len(shape_counts) > 1:
     main_shape = shape_counts.most_common(1)[0][0]  # 出现最多的 shape
     bad_files = [f"{k}\t{v}" for k, v in shapes.items() if v != main_shape]
-    with open("bad_shapes.txt", "w") as f:
+    with open("memb_bad_shapes.txt", "w") as f:
         f.write("\n".join(bad_files))
-    print(f"⚠️ 异常 shape 文件已写入 bad_shapes.txt")
+    print(f"⚠️ 异常 shape 文件已写入 memb_bad_shapes.txt")
