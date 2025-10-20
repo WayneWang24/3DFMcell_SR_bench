@@ -37,7 +37,7 @@ This repository provides:
 ├── mmagic/ # Submodule: OpenMMLab MMagic framework
 ├── data/ # (Not included) Placeholder for microscopy datasets
 └── README.md # Project documentation
-
+```
 
 ---
 
