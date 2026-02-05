@@ -3,7 +3,7 @@
 # 继承官方 SwinIR ×4 配置
 _base_ = ['swinir/swinir_x4s64w8d6e180_8xb4-lr2e-4-500k_df2k.py']
 
-experiment_name = 'swinir_x4_cells_xy_p1p99'
+experiment_name = 'swinir_x4_xy_fastz_200_highL_XY_p1p99'
 data_root = '/root/autodl-tmp/datasets/3dFM_cell_SR_bench_dataset/fastz_200_highL/cells_xy_p1p99'
 
 work_dir = f'./results/work_dirs/{experiment_name}'
@@ -163,7 +163,8 @@ default_hooks = dict(
         rule='greater'       # PSNR / SSIM 是“越大越好”
     ),
     logger=dict(type='LoggerHook', interval=100),
-    timer=dict(type='IterTimerHook')
+    timer=dict(type='IterTimerHook'),
+    param_scheduler=dict(type='ParamSchedulerHook')
 )
 
 # ========== 验证指标 ==========

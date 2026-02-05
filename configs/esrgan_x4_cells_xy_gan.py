@@ -1,15 +1,15 @@
 # ESRGAN (GAN finetune) for cells Condition A
 _base_ = ['./_base_/default_runtime.py']
-
+ckpt_cfg = dict(path=None)
 experiment_name = 'esrgan_x4_cells_xy_gan_p1p99'
 work_dir = f'./results/work_dirs/{experiment_name}'
 save_dir = './results/work_dirs/'
-
 scale = 4
-img_size = 64  # LR patch; GT patch=256
+# pretrain_generator_ckpt = 'results/work_dirs/esrgan_psnr_x4_cells_xy_p1p99/iter_100000.pth'
+img_size = 32  # LR patch; GT patch=256
 
 # 把这个路径改成你阶段A的 best.pth
-pretrain_generator_ckpt = 'results/work_dirs/esrgan_psnr_x4_cells_xy_p1p99/iter_100000.pth'
+
 
 model_wrapper_cfg = dict(type='MMSeparateDistributedDataParallel')  # 分布式时更稳
 
@@ -20,7 +20,7 @@ model = dict(
         in_channels=3, out_channels=3,
         mid_channels=64, num_blocks=23, growth_channels=32,
         upscale_factor=scale,
-        init_cfg=dict(type='Pretrained', checkpoint=pretrain_generator_ckpt, prefix='generator.')
+        init_cfg=dict(type='Pretrained', checkpoint=None, prefix='generator.')
     ),
     discriminator=dict(type='ModifiedVGG', in_channels=3, mid_channels=64),
     pixel_loss=dict(type='L1Loss', loss_weight=1e-2, reduction='mean'),
