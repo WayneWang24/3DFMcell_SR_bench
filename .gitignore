@@ -2,14 +2,18 @@
 # Project-specific ignores
 # ------------------------------
 
-# Ignore mmagic (submodule or external lib)
-mmagic/
+# Results directories (keep structure, ignore contents)
+results/*
+scripts/results/*
+!results/.gitkeep
+!scripts/results/.gitkeep
 
-# Ignore results under scripts/
-scripts/results/
+# Data directory (keep structure, ignore contents)
+data/*
+!data/.gitkeep
 
 # ------------------------------
-# Common outputs & results
+# Large files (models, outputs)
 # ------------------------------
 *.log
 *.csv
@@ -21,11 +25,14 @@ scripts/results/
 *.onnx
 *.trt
 
-# Figures / images
+# Images / data files
 *.png
 *.jpg
 *.jpeg
 *.tiff
+*.tif
+*.nii
+*.nii.gz
 
 # ------------------------------
 # Python / environment ignores

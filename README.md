@@ -53,10 +53,163 @@ pip install -r requirements.txt
 
 
 ## 🚀 Usage
-1. Clone the repository
+
+### 1. Clone the repository
+```bash
 git clone --recursive https://github.com/<your-username>/3DFMcell_SR_bench.git
 cd 3DFMcell_SR_bench
 ```
+
+### 2. Data Preprocessing
+
+#### From NIfTI volumes (.nii.gz)
+```bash
+python scripts/data_pre_process/make_mmagic_dataset_from_nii.py \
+  --input_dir /path/to/nii_volumes \
+  --out_root ./data/cells_dataset \
+  --normalize p1p99 \
+  --xy_scales 4 \
+  --yzxz_scales 2 4 8
+```
+
+#### Convert to SeeSR format
+```bash
+python scripts/data_pre_process/prepare_cells_for_seesr.py \
+  --src-root /path/to/cells_xy_p1p99/train \
+  --dest-root /path/to/seesr_dataset \
+  --scales 2,4,8 --tile 512 --stride 512 --norm p1p99 --to-uint8
+```
+
+### 3. Training
+```bash
+python mmagic/tools/train.py configs/edsr_x_cells_xy_template.py \
+  --work-dir results/work_dirs/edsr_x4_cells_xy \
+  --cfg-options experiment_name=edsr_x4_cells_xy \
+                data_root=/path/to/cells_xy_p1p99 \
+                scale=4
+```
+
+### 4. Batch Evaluation
+
+Evaluate multiple models on multiple datasets with comprehensive metrics.
+
+#### Install evaluation dependencies
+```bash
+pip install lpips pytorch-msssim pyiqa pytorch-fid pandas
+```
+
+#### Metrics
+| Metric | Type | Direction |
+|--------|------|-----------|
+| PSNR | Full-reference | ↑ Higher is better |
+| SSIM | Full-reference | ↑ Higher is better |
+| MS-SSIM | Full-reference | ↑ Higher is better |
+| LPIPS | Full-reference | ↓ Lower is better |
+| VIF | Full-reference | ↑ Higher is better |
+| NIQE | No-reference | ↓ Lower is better |
+| PIQE | No-reference | ↓ Lower is better |
+| NRQM | No-reference | ↑ Higher is better |
+| FID | Distribution | ↓ Lower is better |
+
+#### Run evaluation
+```bash
+# Single model, single dataset
+python scripts/eval/batch_eval_sr.py \
+  --model-dirs results/work_dirs/edsr_x4_cells_xy \
+  --data-roots /path/to/cells_xy_p1p99/val \
+  --scales 4 \
+  --output results/eval_results.csv
+
+# Multiple models, multiple datasets
+python scripts/eval/batch_eval_sr.py \
+  --model-dirs \
+    results/work_dirs/edsr_x4_cells_xy \
+    results/work_dirs/srcnn_x4_cells_xy \
+    results/work_dirs/swinir_x4_cells_xy \
+  --data-roots \
+    /path/to/singleS_30_highL/cells_xy_p1p99/val \
+    /path/to/fastz_200_highL/cells_xy_p1p99/val \
+  --scales 2 4 8 \
+  --output results/eval_all.csv
+
+# Skip inference (use existing SR results)
+python scripts/eval/batch_eval_sr.py \
+  --model-dirs results/work_dirs/edsr_x4_cells_xy \
+  --data-roots /path/to/val \
+  --scales 4 \
+  --skip-inference \
+  --output results/eval_results.csv
+```
+
+#### Output format
+Results are saved as CSV:
+```
+Model     | Dataset        | Scale | PSNR   | SSIM   | MS-SSIM | LPIPS  | VIF    | NIQE   | PIQE   | NRQM   | FID
+----------|----------------|-------|--------|--------|---------|--------|--------|--------|--------|--------|-------
+edsr_x4   | cells_xy_p1p99 | X4    | 32.15  | 0.9234 | 0.9567  | 0.0423 | 0.4521 | 4.2341 | 23.45  | 7.234  | 45.67
+srcnn_x4  | cells_xy_p1p99 | X4    | 30.23  | 0.8912 | 0.9234  | 0.0612 | 0.3892 | 5.1234 | 28.12  | 6.891  | 52.34
+```
+
+### 5. 3D NIfTI Super-Resolution
+
+End-to-end super-resolution on 3D NIfTI volumes. The script slices the volume along XZ or YZ planes, applies 2D SR models, and reconstructs the 3D volume.
+
+**Input:** Original nii.gz volume (X, Y, Z)
+**Output:** Z-axis super-resolved nii.gz (X, Y, Z×scale)
+
+#### Single model
+```bash
+python scripts/eval/sr_3d_nifti.py \
+  --input-dir /path/to/nii_volumes \
+  --output-dir results/sr_3d \
+  --config configs/edsr_x_cells_xy_template.py \
+  --checkpoint results/work_dirs/edsr_x4_cells_xz/best_PSNR_iter_xxx.pth \
+  --scale 4 \
+  --slice-axis xz
+```
+
+#### Multiple models comparison
+```bash
+python scripts/eval/sr_3d_nifti.py \
+  --input-dir /path/to/nii_volumes \
+  --output-dir results/sr_3d \
+  --config \
+    configs/edsr_x_cells_xy_template.py \
+    configs/srcnn_x_cells_xy_template.py \
+    configs/swinir_x_cells_xy_template.py \
+  --checkpoint \
+    results/work_dirs/edsr_x4/best.pth \
+    results/work_dirs/srcnn_x4/best.pth \
+    results/work_dirs/swinir_x4/best.pth \
+  --scale 4 \
+  --slice-axis xz
+```
+
+#### Parameters
+| Parameter | Description |
+|-----------|-------------|
+| `--input-dir` | Directory containing original .nii.gz files |
+| `--output-dir` | Output root directory |
+| `--config` | MMagic config file(s) |
+| `--checkpoint` | Model checkpoint(s), must match configs |
+| `--scale` | Super-resolution scale factor |
+| `--slice-axis` | `xz` (slice along Y) or `yz` (slice along X) |
+| `--prefix` | Only process files with this prefix (e.g., `memb`) |
+
+#### Output structure
+```
+results/sr_3d/
+├── edsr_x4/
+│   ├── memb01_sr_x4.nii.gz
+│   ├── memb02_sr_x4.nii.gz
+│   └── ...
+├── srcnn_x4/
+│   └── ...
+└── swinir_x4/
+    └── ...
+```
+
+---
 
 ## 📊 Dataset
 
