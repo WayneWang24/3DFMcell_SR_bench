@@ -38,6 +38,7 @@ import cv2
 from tqdm import tqdm
 from mmengine.config import Config
 from mmengine.registry import MODELS
+import mmagic.models  # noqa: F401  — 注册模型到 registry
 
 
 def load_model(config_path, checkpoint_path, device='cuda'):

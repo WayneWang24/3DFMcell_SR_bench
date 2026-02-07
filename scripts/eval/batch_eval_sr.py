@@ -26,6 +26,9 @@ import pandas as pd
 import cv2
 from tqdm import tqdm
 
+# 注册 mmagic 模型到 mmengine registry
+import mmagic.models  # noqa: F401
+
 # 图像质量指标
 import torch
 from skimage.metrics import peak_signal_noise_ratio as calc_psnr
