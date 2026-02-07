@@ -38,6 +38,10 @@ import cv2
 from tqdm import tqdm
 from mmengine.config import Config
 from mmengine.registry import MODELS
+# 兼容性修复：huggingface_hub 新版移除了 cached_download
+import huggingface_hub
+if not hasattr(huggingface_hub, 'cached_download'):
+    huggingface_hub.cached_download = huggingface_hub.hf_hub_download
 import mmagic.models  # noqa: F401  — 注册模型（需先修复 Adafactor 冲突，见 run_all_eval.sh）
 
 

@@ -26,6 +26,11 @@ import pandas as pd
 import cv2
 from tqdm import tqdm
 
+# 兼容性修复：huggingface_hub 新版移除了 cached_download，但 diffusers 仍需要
+import huggingface_hub
+if not hasattr(huggingface_hub, 'cached_download'):
+    huggingface_hub.cached_download = huggingface_hub.hf_hub_download
+
 # 注册 mmagic 模型到 mmengine registry（需先修复 Adafactor 冲突，见 run_all_eval.sh）
 import mmagic.models  # noqa: F401
 
