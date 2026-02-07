@@ -26,14 +26,8 @@ import pandas as pd
 import cv2
 from tqdm import tqdm
 
-# 注册 mmagic 模型到 mmengine registry
-# (临时允许重复注册，绕过 Adafactor 冲突)
-from mmengine.registry import Registry as _Registry
-_orig_reg = _Registry._register_module
-_Registry._register_module = lambda self, module, module_name, force=False: \
-    _orig_reg(self, module, module_name, force=True)
+# 注册 mmagic 模型到 mmengine registry（需先修复 Adafactor 冲突，见 run_all_eval.sh）
 import mmagic.models  # noqa: F401
-_Registry._register_module = _orig_reg
 
 # 图像质量指标
 import torch

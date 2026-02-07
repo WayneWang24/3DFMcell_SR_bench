@@ -38,13 +38,7 @@ import cv2
 from tqdm import tqdm
 from mmengine.config import Config
 from mmengine.registry import MODELS
-# 注册 mmagic 模型（临时允许重复注册，绕过 Adafactor 冲突）
-from mmengine.registry import Registry as _Registry
-_orig_reg = _Registry._register_module
-_Registry._register_module = lambda self, module, module_name, force=False: \
-    _orig_reg(self, module, module_name, force=True)
-import mmagic.models  # noqa: F401
-_Registry._register_module = _orig_reg
+import mmagic.models  # noqa: F401  — 注册模型（需先修复 Adafactor 冲突，见 run_all_eval.sh）
 
 
 def load_model(config_path, checkpoint_path, device='cuda'):

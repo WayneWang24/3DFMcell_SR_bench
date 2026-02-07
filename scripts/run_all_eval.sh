@@ -9,8 +9,27 @@
 
 set -e
 
-source ~/miniconda3/etc/profile.d/conda.sh
-conda activate cellsr
+# ---- 修复 mmengine Adafactor 注册冲突（仅需执行一次）----
+python3 << 'PYEOF'
+import glob
+for p in glob.glob('/opt/conda/lib/python*/site-packages/mmengine/optim/optimizer/builder.py'):
+    with open(p) as f:
+        s = f.read()
+    old = "OPTIMIZERS.register_module(name='Adafactor', module=Adafactor)"
+    new = "OPTIMIZERS.register_module(name='Adafactor', module=Adafactor, force=True)"
+    if old in s:
+        with open(p, 'w') as f:
+            f.write(s.replace(old, new))
+        print(f'[fix] Patched Adafactor conflict: {p}')
+    else:
+        print(f'[ok] Already patched: {p}')
+PYEOF
+
+# ---- 环境激活（Docker 中可跳过）----
+if [ -f ~/miniconda3/etc/profile.d/conda.sh ]; then
+    source ~/miniconda3/etc/profile.d/conda.sh
+    conda activate cellsr
+fi
 
 # ---- 路径配置 ----
 WD=results/work_dirs
