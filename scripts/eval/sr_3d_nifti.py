@@ -125,15 +125,16 @@ def tensor_to_slice(tensor):
     return img
 
 
-def super_resolve_slice(model, img, device='cuda'):
+def super_resolve_slice(model, img, original_w=None, device='cuda'):
     """
-    对单张 2D 切片做超分
+    对单张 2D 切片做超分，只放大 H（Z 轴），W 保持原始尺寸。
 
     输入: (H, W) numpy array, 值域任意
-    输出: (H*scale, W) numpy array, 值域 [0, 1]
+    输出: (H*scale, W_original) numpy array, 值域 [0, 1]
+
+    2D SR 模型会同时放大 H 和 W，所以需要在 W 方向 resize 回原始尺寸。
     """
-    # 记录原始范围
-    p1, p99 = np.percentile(img, [1, 99])
+    H, W = img.shape
 
     # 归一化
     img_norm = normalize_slice(img, 'p1p99')
@@ -146,7 +147,13 @@ def super_resolve_slice(model, img, device='cuda'):
         sr_tensor = model(tensor)
 
     # 转回 numpy
-    sr_img = tensor_to_slice(sr_tensor)
+    sr_img = tensor_to_slice(sr_tensor)  # (H*scale, W*scale)
+
+    # W 方向 resize 回原始尺寸（只保留 Z 轴的超分）
+    target_w = original_w if original_w is not None else W
+    if sr_img.shape[1] != target_w:
+        sr_img = cv2.resize(sr_img, (target_w, sr_img.shape[0]),
+                            interpolation=cv2.INTER_LINEAR)
 
     return sr_img
 
@@ -164,7 +171,7 @@ def process_volume_xz(vol, model, device='cuda', verbose=True):
 
     # 先处理一张获取超分后的 Z 尺寸
     test_slice = vol[:, 0, :].T  # (Z, X)
-    test_sr = super_resolve_slice(model, test_slice, device)
+    test_sr = super_resolve_slice(model, test_slice, original_w=X, device=device)
     Z_sr, _ = test_sr.shape
 
     # 创建输出体积
@@ -179,8 +186,8 @@ def process_volume_xz(vol, model, device='cuda', verbose=True):
         # 取 XZ 切片: (X, Z) -> 转置为 (Z, X) 作为图像
         xz_slice = vol[:, y, :].T  # (Z, X)
 
-        # 超分
-        xz_sr = super_resolve_slice(model, xz_slice, device)  # (Z*scale, X)
+        # 超分（只放大 Z，W=X 保持不变）
+        xz_sr = super_resolve_slice(model, xz_slice, original_w=X, device=device)  # (Z*scale, X)
 
         # 放回体积: (Z*scale, X) -> 转置为 (X, Z*scale)
         vol_sr[:, y, :] = xz_sr.T
@@ -201,7 +208,7 @@ def process_volume_yz(vol, model, device='cuda', verbose=True):
 
     # 先处理一张获取超分后的 Z 尺寸
     test_slice = vol[0, :, :].T  # (Z, Y)
-    test_sr = super_resolve_slice(model, test_slice, device)
+    test_sr = super_resolve_slice(model, test_slice, original_w=Y, device=device)
     Z_sr, _ = test_sr.shape
 
     vol_sr = np.zeros((X, Y, Z_sr), dtype=np.float32)
@@ -212,7 +219,7 @@ def process_volume_yz(vol, model, device='cuda', verbose=True):
 
     for x in iterator:
         yz_slice = vol[x, :, :].T  # (Z, Y)
-        yz_sr = super_resolve_slice(model, yz_slice, device)  # (Z*scale, Y)
+        yz_sr = super_resolve_slice(model, yz_slice, original_w=Y, device=device)  # (Z*scale, Y)
         vol_sr[x, :, :] = yz_sr.T
 
     return vol_sr
@@ -279,8 +286,9 @@ def main():
     if len(args.config) != len(args.checkpoint):
         raise ValueError(f"config 数量 ({len(args.config)}) 与 checkpoint 数量 ({len(args.checkpoint)}) 不匹配")
 
-    # 获取所有 nii.gz 文件
+    # 获取所有 nii.gz 文件（排除 nuc 开头的）
     input_files = sorted(glob.glob(os.path.join(args.input_dir, '*.nii.gz')))
+    input_files = [f for f in input_files if not Path(f).name.startswith('nuc')]
     if args.prefix:
         input_files = [f for f in input_files if Path(f).name.startswith(args.prefix)]
 
