@@ -333,7 +333,8 @@ def calc_fid(sr_dir, hr_dir, device='cuda'):
             [sr_dir, hr_dir],
             batch_size=50,
             device=device,
-            dims=2048
+            dims=2048,
+            num_workers=0
         )
         return fid
     except Exception as e:
