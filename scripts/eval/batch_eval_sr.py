@@ -259,7 +259,7 @@ def run_inference_simple(config_path, checkpoint_path, lr_dir, output_dir, scale
     """简单推理（不依赖完整 mmagic API）"""
     import torch
     from mmengine.config import Config
-    from mmengine.registry import MODELS
+    from mmagic.registry import MODELS
 
     os.makedirs(output_dir, exist_ok=True)
 

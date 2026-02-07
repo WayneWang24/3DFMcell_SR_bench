@@ -37,7 +37,7 @@ import torch
 import cv2
 from tqdm import tqdm
 from mmengine.config import Config
-from mmengine.registry import MODELS
+from mmagic.registry import MODELS
 # 兼容性修复：huggingface_hub 新版移除了 cached_download
 import huggingface_hub
 if not hasattr(huggingface_hub, 'cached_download'):
