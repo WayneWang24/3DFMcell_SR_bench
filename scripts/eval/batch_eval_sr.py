@@ -171,24 +171,33 @@ class MetricCalculator:
         if self.niqe_fn is None:
             return np.nan
         sr_t = to_tensor(sr, self.device)
-        with torch.no_grad():
-            return self.niqe_fn(sr_t).item()
+        try:
+            with torch.no_grad():
+                return self.niqe_fn(sr_t).item()
+        except Exception:
+            return np.nan
 
     def calc_piqe(self, sr):
         """PIQE (越低越好) - No-reference"""
         if self.piqe_fn is None:
             return np.nan
         sr_t = to_tensor(sr, self.device)
-        with torch.no_grad():
-            return self.piqe_fn(sr_t).item()
+        try:
+            with torch.no_grad():
+                return self.piqe_fn(sr_t).item()
+        except Exception:
+            return np.nan
 
     def calc_nrqm(self, sr):
         """NRQM (越高越好) - No-reference"""
         if self.nrqm_fn is None:
             return np.nan
         sr_t = to_tensor(sr, self.device)
-        with torch.no_grad():
-            return self.nrqm_fn(sr_t).item()
+        try:
+            with torch.no_grad():
+                return self.nrqm_fn(sr_t).item()
+        except Exception:
+            return np.nan
 
     def calc_all(self, sr, hr):
         """计算所有指标"""
@@ -325,10 +334,25 @@ def eval_pair_dirs(sr_dir, hr_dir, calc):
 
 
 def calc_fid(sr_dir, hr_dir, device='cuda'):
-    """计算 FID"""
+    """计算 FID（带数值稳定性修正）"""
     if not HAS_FID:
         return np.nan
     try:
+        import pytorch_fid.fid_score as _fid_mod
+        from scipy import linalg
+
+        _orig_calc = _fid_mod.calculate_frechet_distance
+
+        def _stable_frechet_distance(mu1, sigma1, mu2, sigma2, eps=1e-6):
+            """Patch: 处理 sqrtm 产生虚数的情况"""
+            diff = mu1 - mu2
+            covmean, _ = linalg.sqrtm(sigma1.dot(sigma2), disp=False)
+            if np.iscomplexobj(covmean):
+                covmean = covmean.real
+            tr = np.trace(sigma1) + np.trace(sigma2) - 2 * np.trace(covmean)
+            return float(diff.dot(diff) + tr)
+
+        _fid_mod.calculate_frechet_distance = _stable_frechet_distance
         fid = fid_score.calculate_fid_given_paths(
             [sr_dir, hr_dir],
             batch_size=50,
@@ -336,6 +360,7 @@ def calc_fid(sr_dir, hr_dir, device='cuda'):
             dims=2048,
             num_workers=0
         )
+        _fid_mod.calculate_frechet_distance = _orig_calc
         return fid
     except Exception as e:
         print(f"[警告] FID 计算失败: {e}")
