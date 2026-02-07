@@ -7,7 +7,7 @@
 #  从 scripts/ 目录运行:  bash run_all_eval.sh
 # ==========================================================
 
-set -e
+set +e  # 不因单组失败而中止整个脚本
 
 # ---- 修复 mmengine Adafactor 注册冲突（仅需执行一次）----
 python3 << 'PYEOF'
@@ -57,6 +57,7 @@ echo "######################################################"
 # ----------------------------------------------------------
 echo ""
 echo ">>> single_shot / xy"
+if [ -f ${OUT}/eval_singleS_xy.csv ]; then echo "[跳过] eval_singleS_xy.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/swinir_x4_singleS_30_highL_xy \
@@ -66,12 +67,14 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/single_shot_volumes/cells_xy_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_singleS_xy.csv
+fi
 
 # ----------------------------------------------------------
 #  single_shot_volumes — YZ plane
 # ----------------------------------------------------------
 echo ""
 echo ">>> single_shot / yz"
+if [ -f ${OUT}/eval_singleS_yz.csv ]; then echo "[跳过] eval_singleS_yz.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/srcnn_x4_singleS_yz_p1p99 \
@@ -79,12 +82,14 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/single_shot_volumes/cells_yz_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_singleS_yz.csv
+fi
 
 # ----------------------------------------------------------
 #  single_shot_volumes — XZ plane
 # ----------------------------------------------------------
 echo ""
 echo ">>> single_shot / xz"
+if [ -f ${OUT}/eval_singleS_xz.csv ]; then echo "[跳过] eval_singleS_xz.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/srcnn_x4_singleS_xz_p1p99 \
@@ -95,12 +100,14 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/single_shot_volumes/cells_xz_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_singleS_xz.csv
+fi
 
 # ----------------------------------------------------------
 #  fastz_volumes — XY plane
 # ----------------------------------------------------------
 echo ""
 echo ">>> fastz / xy"
+if [ -f ${OUT}/eval_fastz_xy.csv ]; then echo "[跳过] eval_fastz_xy.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/swinir_x4_xy_fastz_200_highL_XY_p1p99 \
@@ -110,12 +117,14 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/fastz_volumes/cells_xy_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_fastz_xy.csv
+fi
 
 # ----------------------------------------------------------
 #  fastz_volumes — YZ plane
 # ----------------------------------------------------------
 echo ""
 echo ">>> fastz / yz"
+if [ -f ${OUT}/eval_fastz_yz.csv ]; then echo "[跳过] eval_fastz_yz.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/srcnn_x4_fastz_yz_p1p99 \
@@ -123,12 +132,14 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/fastz_volumes/cells_yz_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_fastz_yz.csv
+fi
 
 # ----------------------------------------------------------
 #  fastz_volumes — XZ plane
 # ----------------------------------------------------------
 echo ""
 echo ">>> fastz / xz"
+if [ -f ${OUT}/eval_fastz_xz.csv ]; then echo "[跳过] eval_fastz_xz.csv 已存在"; else
 python ${EVAL_2D} \
   --model-dirs \
     ${WD}/srcnn_x4_fastz_xz_p1p99 \
@@ -139,6 +150,7 @@ python ${EVAL_2D} \
   --data-roots ${DATA}/fastz_volumes/cells_xz_p1p99/val \
   --scales ${SCALE} \
   --output ${OUT}/eval_fastz_xz.csv
+fi
 
 # ----------------------------------------------------------
 #  合并所有 2D 评测 CSV
