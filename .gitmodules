@@ -1,3 +1,6 @@
 [submodule "mmagic"]
 	path = mmagic
 	url = https://github.com/open-mmlab/mmagic.git
+[submodule "CTransformer"]
+	path = CTransformer
+	url = https://github.com/chiellini/CTransformer.git
