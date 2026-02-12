@@ -1,14 +1,39 @@
 #!/bin/bash
 # =============================================================
 # SR → CTransformer 分割对比 pipeline
-# 用法: bash scripts/run_seg_comparison.sh
+#
+# 用法 (在 Docker 容器内运行):
+#   docker start cellsr_eval && docker exec -it cellsr_eval bash
+#   cd /home/vm/workspace/3DFMcell_SR_bench
+#   bash scripts/run_seg_comparison.sh
+#
+# Docker 创建 (如未创建):
+#   docker run -it --gpus all \
+#     -v /home/vm/workspace/3DFMcell_SR_bench:/home/vm/workspace/3DFMcell_SR_bench \
+#     -w /home/vm/workspace/3DFMcell_SR_bench \
+#     --name cellsr_eval yyhtbs/openmmlab_mmagic:v1.1.0 bash
+#
+# 注意: 所有数据输出在子模块外部，避免 PermissionError
 # =============================================================
 set -e
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CT_ROOT=$PROJECT_ROOT/CTransformer
+CT_INPUT=$PROJECT_ROOT/data/ct_input
+SEG_OUTPUT=$PROJECT_ROOT/scripts/results/seg_comparison
 cd "$PROJECT_ROOT"
 
+echo "============================================"
+echo "  Step 0: 检查 / 安装依赖"
+echo "============================================"
+python -c "import monai" 2>/dev/null || pip install monai
+python -c "import tiler" 2>/dev/null || pip install tiler
+python -c "import treelib" 2>/dev/null || pip install treelib
+python -c "import scipy" 2>/dev/null || pip install scipy
+python -c "import nibabel" 2>/dev/null || pip install nibabel --no-deps
+echo "依赖检查完成"
+
+echo ""
 echo "============================================"
 echo "  Step 1: 准备 CTransformer 输入数据"
 echo "============================================"
@@ -16,14 +41,14 @@ echo "============================================"
 python scripts/prepare_ct_data.py \
   --raw-dir data/raw_cell_datasets/fastz_volumes \
   --sr-dir scripts/results/eval_outputs/sr_3d_fastz_xz \
-  --output-dir CTransformer/DataSource/RunningDataset \
+  --output-dir "$CT_INPUT" \
   --condition fastz
 
 echo ""
 echo "============================================"
 echo "  Step 2: 收集所有 embryo 名称"
 echo "============================================"
-EMBRYOS=$(ls -d CTransformer/DataSource/RunningDataset/*/ 2>/dev/null | xargs -I {} basename {} | tr '\n' "," | sed "s/,$//" | sed "s/,/','/g")
+EMBRYOS=$(ls -d "$CT_INPUT"/*/ 2>/dev/null | xargs -I {} basename {} | tr '\n' "," | sed "s/,$//" | sed "s/,/','/g")
 EMBRYOS="['${EMBRYOS}']"
 echo "Embryo 列表: $EMBRYOS"
 
@@ -32,6 +57,7 @@ echo "============================================"
 echo "  Step 3: 生成 CTransformer 推断配置"
 echo "============================================"
 
+mkdir -p "$CT_ROOT/para_config"
 cat > "$CT_ROOT/para_config/3_SR_bench_running.yaml" << YAMLEOF
 workflow_step: 3_RUN
 
@@ -50,8 +76,8 @@ dataset_name: NiigzRunDataset
 trained_model: ./ckpts/sTUNETr_1_20240203/model_epoch_1000_edt6_sTUNETr.pth
 seed: 1024
 
-run_data_path: ./DataSource/RunningDataset
-output_data_path: ./OutputData/SR_bench
+run_data_path: ${CT_INPUT}
+output_data_path: ${SEG_OUTPUT}
 run_transforms:
   Compose([
     Resize((256, 384, 224)),
@@ -82,4 +108,4 @@ echo ""
 echo "============================================"
 echo "  完成! 检查输出:"
 echo "============================================"
-find OutputData/SR_bench -name "*segCell*" -o -name "*segMemb*" | head -30
+find "$SEG_OUTPUT" -name "*segCell*" -o -name "*segMemb*" | head -30
