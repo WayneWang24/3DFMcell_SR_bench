@@ -66,7 +66,7 @@ net_params:
   img_size: (128,128,128)
   in_channels: 2
   feature_size: 48
-  out_channels: 1
+  out_channels: 2
 
 is_input_nuc_channel: True
 

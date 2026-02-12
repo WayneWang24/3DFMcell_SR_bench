@@ -201,7 +201,8 @@ def main():
     # ============================================================
     # 1. 原始数据
     # ============================================================
-    embryo_orig = f'{args.condition}_original'
+    # CTransformer 用 split('_')[:2] 解析文件名，embryo 名不能含下划线
+    embryo_orig = f'{args.condition}-original'
     n = prepare_original(args.raw_dir, embryo_orig, args.output_dir, use_symlink)
     print(f'[原始数据] {embryo_orig}: {n} 个时间点')
 
@@ -219,7 +220,7 @@ def main():
 
     for model_name in model_dirs:
         model_path = os.path.join(args.sr_dir, model_name)
-        embryo_sr = f'{args.condition}_{model_name}'
+        embryo_sr = f'{args.condition}-{model_name}'.replace('_', '-')
         n = prepare_sr(model_path, args.raw_dir, embryo_sr, args.output_dir, use_symlink)
         if n > 0:
             print(f'[SR 模型] {embryo_sr}: {n} 个时间点 (nuc 已插值)')
