@@ -80,8 +80,7 @@ run_data_path: ${CT_INPUT}
 output_data_path: ${SEG_OUTPUT}
 run_transforms:
   Compose([
-    Resize((256, 384, 224)),
-    NumpyType((np.float32, np.float32, np.float32, np.float32))
+    NumpyType((np.float32, np.float32))
     ])
 
 is_predict_memb: True
