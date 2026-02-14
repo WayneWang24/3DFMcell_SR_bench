@@ -1,64 +1,174 @@
 #!/bin/bash
 # =============================================================
-# SR → CTransformer 分割对比 pipeline
+# SR → 强度修复 → CTransformer 分割 + 谱系 对比 pipeline
 #
-# 用法 (在 Docker 容器内运行):
-#   docker start cellsr_eval && docker exec -it cellsr_eval bash
+# 在 Docker 容器内运行:
+#   sudo docker start cellsr_eval_v2 && sudo docker exec -it cellsr_eval_v2 bash
 #   cd /home/vm/workspace/3DFMcell_SR_bench
-#   bash scripts/run_seg_comparison.sh
+#   bash scripts/run_seg_comparison.sh [fastz|singleS] [xz|yz]
 #
-# Docker 创建 (如未创建):
-#   docker run -it --gpus all \
-#     -v /home/vm/workspace/3DFMcell_SR_bench:/home/vm/workspace/3DFMcell_SR_bench \
-#     -w /home/vm/workspace/3DFMcell_SR_bench \
-#     --name cellsr_eval yyhtbs/openmmlab_mmagic:v1.1.0 bash
-#
-# 注意: 所有数据输出在子模块外部，避免 PermissionError
+# 示例:
+#   bash scripts/run_seg_comparison.sh fastz xz
+#   bash scripts/run_seg_comparison.sh singleS yz
 # =============================================================
 set -e
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CT_ROOT=$PROJECT_ROOT/CTransformer
-CT_INPUT=$PROJECT_ROOT/data/ct_input
-SEG_OUTPUT=$PROJECT_ROOT/scripts/results/seg_comparison
+
+# ============================================================
+# 参数
+# ============================================================
+CONDITION=${1:-fastz}       # fastz 或 singleS
+AXIS=${2:-xz}              # xz 或 yz
+
+# ============================================================
+# 统一路径配置
+# ============================================================
+RAW_DIR=$PROJECT_ROOT/data/raw_cell_datasets/${CONDITION}_volumes
+SR_DIR=$PROJECT_ROOT/scripts/results/eval_outputs/sr_3d_${CONDITION}_${AXIS}
+SR_FIXED_DIR=${SR_DIR}_fixed
+CT_INPUT=$PROJECT_ROOT/data/ct_input/${CONDITION}_${AXIS}
+SEG_OUTPUT=$PROJECT_ROOT/scripts/results/seg_comparison/${CONDITION}_${AXIS}
+VIS_OUTPUT=$PROJECT_ROOT/scripts/results/seg_vis/${CONDITION}_${AXIS}
+CKPT=$CT_ROOT/ckpts/sTUNETr_1_20240203/model_epoch_1000_edt6_sTUNETr.pth
+
 cd "$PROJECT_ROOT"
 
 echo "============================================"
+echo "  SR Bench 分割对比 Pipeline"
+echo "============================================"
+echo "  条件:     $CONDITION"
+echo "  切面:     $AXIS"
+echo "  原始数据: $RAW_DIR"
+echo "  SR 输出:  $SR_DIR"
+echo "  SR 修复:  $SR_FIXED_DIR"
+echo "  CT 输入:  $CT_INPUT"
+echo "  分割输出: $SEG_OUTPUT"
+echo "  可视化:   $VIS_OUTPUT"
+echo "  模型:     $CKPT"
+echo "============================================"
+
+# ============================================================
+# Step 0: 安装依赖
+# ============================================================
+echo ""
+echo "============================================"
 echo "  Step 0: 检查 / 安装依赖"
 echo "============================================"
-python -c "import monai" 2>/dev/null || pip install monai
+python -c "import monai" 2>/dev/null || pip install monai==1.3.0
+python -c "import torchmetrics" 2>/dev/null || pip install torchmetrics==0.11.4
 python -c "import tiler" 2>/dev/null || pip install tiler
 python -c "import treelib" 2>/dev/null || pip install treelib
 python -c "import scipy" 2>/dev/null || pip install scipy
 python -c "import nibabel" 2>/dev/null || pip install nibabel --no-deps
+python -c "import skimage" 2>/dev/null || pip install scikit-image
+python -c "import gtda" 2>/dev/null || pip install giotto-tda
+python -c "import matplotlib" 2>/dev/null || pip install matplotlib
 echo "依赖检查完成"
 
+# ============================================================
+# Step 1: 兼容性补丁
+# ============================================================
 echo ""
 echo "============================================"
-echo "  Step 1: 准备 CTransformer 输入数据"
+echo "  Step 1: 应用兼容性补丁"
+echo "============================================"
+
+# torch.load: weights_only=False
+for f in $CT_ROOT/3_run_segmentation.py $CT_ROOT/run_segmentation.py; do
+    if [ -f "$f" ] && grep -q "torch.load(" "$f" && ! grep -q "weights_only" "$f"; then
+        sed -i 's/torch\.load(\(.*\))/torch.load(\1, weights_only=False)/g' "$f"
+        echo "  [patched] torch.load: $(basename $f)"
+    fi
+done
+
+# module. prefix strip
+if [ -f "$CT_ROOT/3_run_segmentation.py" ] && ! grep -q 'k.replace("module."' "$CT_ROOT/3_run_segmentation.py"; then
+    sed -i '/check_point = torch.load/a\    check_point["state_dict"] = {k.replace("module.", ""): v for k, v in check_point["state_dict"].items()}' "$CT_ROOT/3_run_segmentation.py"
+    echo "  [patched] module. prefix strip"
+fi
+
+# num_workers=0
+if [ -f "$CT_ROOT/3_run_segmentation.py" ]; then
+    sed -i 's/num_workers=1/num_workers=0/g' "$CT_ROOT/3_run_segmentation.py"
+    echo "  [patched] num_workers=0"
+fi
+
+# np.float → float
+for f in $CT_ROOT/segmentation_utils/ProcessLib.py $CT_ROOT/6_build_cell_shape_map.py $CT_ROOT/data_utils/augmentations.py; do
+    if [ -f "$f" ] && grep -q 'np\.float)' "$f"; then
+        sed -i 's/np\.float)/float)/g' "$f"
+        echo "  [patched] np.float: $(basename $f)"
+    fi
+done
+
+# collections.abc.Sequence
+if [ -f "$CT_ROOT/data_utils/transforms.py" ] && grep -q 'collections\.Sequence' "$CT_ROOT/data_utils/transforms.py"; then
+    sed -i 's/collections\.Sequence/collections.abc.Sequence/g' "$CT_ROOT/data_utils/transforms.py"
+    echo "  [patched] collections.abc.Sequence"
+fi
+
+# scipy.ndimage.morphology deprecated
+for f in $(grep -rl "scipy.ndimage.morphology" "$CT_ROOT" 2>/dev/null || true); do
+    if [ -f "$f" ]; then
+        sed -i 's/from scipy\.ndimage\.morphology import/from scipy.ndimage import/g' "$f"
+        echo "  [patched] scipy.ndimage: $(basename $f)"
+    fi
+done
+
+echo "补丁应用完成"
+
+# ============================================================
+# Step 2: 修复 SR 输出强度
+# ============================================================
+echo ""
+echo "============================================"
+echo "  Step 2: 修复 SR 输出强度 (percentile match)"
+echo "============================================"
+
+if [ -d "$SR_DIR" ]; then
+    python scripts/fix_sr_intensity.py \
+        --sr-dir "$SR_DIR" \
+        --raw-dir "$RAW_DIR" \
+        --output-dir "$SR_FIXED_DIR" \
+        --method percentile
+else
+    echo "  [跳过] SR 目录不存在: $SR_DIR"
+    SR_FIXED_DIR="$SR_DIR"
+fi
+
+# ============================================================
+# Step 3: 准备 CTransformer 输入数据 (预 resize)
+# ============================================================
+echo ""
+echo "============================================"
+echo "  Step 3: 准备 CTransformer 输入数据"
 echo "============================================"
 
 python scripts/prepare_ct_data.py \
-  --raw-dir data/raw_cell_datasets/fastz_volumes \
-  --sr-dir scripts/results/eval_outputs/sr_3d_fastz_xz \
-  --output-dir "$CT_INPUT" \
-  --condition fastz
+    --raw-dir "$RAW_DIR" \
+    --sr-dir "$SR_FIXED_DIR" \
+    --output-dir "$CT_INPUT" \
+    --condition "$CONDITION" \
+    --target-size 256 384 224
 
+# ============================================================
+# Step 4: 收集 embryo 名称 + 生成配置
+# ============================================================
 echo ""
 echo "============================================"
-echo "  Step 2: 收集所有 embryo 名称"
-echo "============================================"
-EMBRYOS=$(ls -d "$CT_INPUT"/*/ 2>/dev/null | xargs -I {} basename {} | tr '\n' "," | sed "s/,$//" | sed "s/,/','/g")
-EMBRYOS="['${EMBRYOS}']"
-echo "Embryo 列表: $EMBRYOS"
-
-echo ""
-echo "============================================"
-echo "  Step 3: 生成 CTransformer 推断配置"
+echo "  Step 4: 生成 CTransformer 配置"
 echo "============================================"
 
+EMBRYO_LIST=$(ls -d "$CT_INPUT"/*/ 2>/dev/null | xargs -I {} basename {} | sort)
+EMBRYO_PYLIST=$(echo $EMBRYO_LIST | tr ' ' '\n' | sed "s/.*/'&'/" | paste -sd, -)
+EMBRYO_PYLIST="[$EMBRYO_PYLIST]"
+echo "  Embryo 列表: $EMBRYO_PYLIST"
+
+CFG_NAME="3_SR_bench_${CONDITION}_${AXIS}"
 mkdir -p "$CT_ROOT/para_config"
-cat > "$CT_ROOT/para_config/3_SR_bench_running.yaml" << YAMLEOF
+cat > "$CT_ROOT/para_config/${CFG_NAME}.yaml" << YAMLEOF
 workflow_step: 3_RUN
 
 net: SwinUNETR
@@ -70,10 +180,10 @@ net_params:
 
 is_input_nuc_channel: True
 
-running_embryo_names: ${EMBRYOS}
+running_embryo_names: ${EMBRYO_PYLIST}
 
 dataset_name: NiigzRunDataset
-trained_model: ./ckpts/sTUNETr_1_20240203/model_epoch_1000_edt6_sTUNETr.pth
+trained_model: ${CKPT}
 seed: 1024
 
 run_data_path: ${CT_INPUT}
@@ -93,18 +203,58 @@ is_nuc_predicted_and_localmin: False
 mem_edt_threshold: 9
 YAMLEOF
 
-echo "配置已写入: $CT_ROOT/para_config/3_SR_bench_running.yaml"
-cat "$CT_ROOT/para_config/3_SR_bench_running.yaml"
+echo "  配置: $CT_ROOT/para_config/${CFG_NAME}.yaml"
+cat "$CT_ROOT/para_config/${CFG_NAME}.yaml"
 
+# ============================================================
+# Step 5: 运行 CTransformer 分割
+# ============================================================
 echo ""
 echo "============================================"
-echo "  Step 4: 运行 CTransformer 分割推断"
+echo "  Step 5: 运行 CTransformer 分割"
 echo "============================================"
+
+mkdir -p "$SEG_OUTPUT"
 cd "$CT_ROOT"
-python 3_run_segmentation.py -cfg 3_SR_bench_running -gpu 0
+python 3_run_segmentation.py -cfg "$CFG_NAME" -gpu 0
+cd "$PROJECT_ROOT"
 
 echo ""
+echo "分割完成! 检查输出:"
+for embryo in $EMBRYO_LIST; do
+    memb_count=$(find "$SEG_OUTPUT/$embryo/SegMemb" -name "*.nii.gz" 2>/dev/null | wc -l)
+    cell_count=$(find "$SEG_OUTPUT/$embryo/SegCell" -name "*.nii.gz" 2>/dev/null | wc -l)
+    echo "  $embryo: SegMemb=$memb_count, SegCell=$cell_count"
+done
+
+# ============================================================
+# Step 6: 可视化
+# ============================================================
+echo ""
 echo "============================================"
-echo "  完成! 检查输出:"
+echo "  Step 6: 生成可视化 PNG"
 echo "============================================"
-find "$SEG_OUTPUT" -name "*segCell*" -o -name "*segMemb*" | head -30
+
+python scripts/visualize_seg.py \
+    --seg-root "$SEG_OUTPUT" \
+    --data-root "$CT_INPUT" \
+    --output "$VIS_OUTPUT"
+
+# ============================================================
+# 完成
+# ============================================================
+echo ""
+echo "============================================"
+echo "  Pipeline 完成!"
+echo "============================================"
+echo ""
+echo "  输出路径总览:"
+echo "    SR 修复:      $SR_FIXED_DIR"
+echo "    CT 输入:      $CT_INPUT"
+echo "    分割结果:     $SEG_OUTPUT"
+echo "    可视化 PNG:   $VIS_OUTPUT"
+echo ""
+echo "  传到本地查看:"
+echo "    tar -czf seg_${CONDITION}_${AXIS}.tar.gz \\"
+echo "      $VIS_OUTPUT \\"
+echo "      $SEG_OUTPUT"

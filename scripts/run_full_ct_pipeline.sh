@@ -3,7 +3,7 @@
 # 完整 CTransformer Pipeline: 分割 + 谱系映射
 #
 # 在 polyHPC Docker 容器内运行:
-#   sudo docker start cellsr_eval && sudo docker exec -it cellsr_eval bash
+#   sudo docker start cellsr_eval_v2 && sudo docker exec -it cellsr_eval_v2 bash
 #   cd /home/vm/workspace/3DFMcell_SR_bench
 #   bash scripts/run_full_ct_pipeline.sh [embryo1 embryo2 ...]
 #
