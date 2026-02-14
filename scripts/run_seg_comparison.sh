@@ -25,7 +25,12 @@ AXIS=${2:-xz}              # xz 或 yz
 # ============================================================
 # 统一路径配置
 # ============================================================
-RAW_DIR=$PROJECT_ROOT/data/raw_cell_datasets/${CONDITION}_volumes
+# singleS 目录名是 single_shot_volumes，fastz 是 fastz_volumes
+if [ "$CONDITION" = "singleS" ]; then
+    RAW_DIR=$PROJECT_ROOT/data/raw_cell_datasets/single_shot_volumes
+else
+    RAW_DIR=$PROJECT_ROOT/data/raw_cell_datasets/${CONDITION}_volumes
+fi
 SR_DIR=$PROJECT_ROOT/scripts/results/eval_outputs/sr_3d_${CONDITION}_${AXIS}
 SR_FIXED_DIR=${SR_DIR}_fixed
 CT_INPUT=$PROJECT_ROOT/data/ct_input/${CONDITION}_${AXIS}
