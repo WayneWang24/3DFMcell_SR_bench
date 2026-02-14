@@ -21,6 +21,7 @@ CT_ROOT=$PROJECT_ROOT/CTransformer
 # ============================================================
 CONDITION=${1:-fastz}       # fastz 或 singleS
 AXIS=${2:-xz}              # xz 或 yz
+GPU_ID=${3:-0}             # GPU 编号，默认 0
 
 # ============================================================
 # 统一路径配置
@@ -271,7 +272,7 @@ echo "============================================"
 
 mkdir -p "$SEG_OUTPUT"
 cd "$CT_ROOT"
-python 3_run_segmentation.py -cfg "$CFG_NAME" -gpu 0
+python 3_run_segmentation.py -cfg "$CFG_NAME" -gpu "$GPU_ID"
 cd "$PROJECT_ROOT"
 
 echo ""
