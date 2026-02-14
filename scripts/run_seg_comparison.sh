@@ -43,6 +43,7 @@ cd "$PROJECT_ROOT"
 echo "============================================"
 echo "  SR Bench 分割对比 Pipeline"
 echo "============================================"
+echo "  PROJECT_ROOT: $PROJECT_ROOT"
 echo "  条件:     $CONDITION"
 echo "  切面:     $AXIS"
 echo "  原始数据: $RAW_DIR"
@@ -53,6 +54,38 @@ echo "  分割输出: $SEG_OUTPUT"
 echo "  可视化:   $VIS_OUTPUT"
 echo "  模型:     $CKPT"
 echo "============================================"
+
+# ============================================================
+# 路径验证
+# ============================================================
+echo ""
+echo "[路径验证]"
+if [ -d "$RAW_DIR" ]; then
+    RAW_MEMB_COUNT=$(ls "$RAW_DIR"/memb_*.nii.gz 2>/dev/null | wc -l)
+    RAW_NUC_COUNT=$(ls "$RAW_DIR"/nuc_*.nii.gz 2>/dev/null | wc -l)
+    echo "  原始数据目录存在: $RAW_DIR"
+    echo "    memb_*.nii.gz: $RAW_MEMB_COUNT 个"
+    echo "    nuc_*.nii.gz:  $RAW_NUC_COUNT 个"
+    if [ "$RAW_MEMB_COUNT" -eq 0 ]; then
+        echo "  [错误] 原始数据目录没有 memb_*.nii.gz 文件!"
+        echo "  目录内容:"
+        ls -la "$RAW_DIR"/ | head -20
+        exit 1
+    fi
+else
+    echo "  [错误] 原始数据目录不存在: $RAW_DIR"
+    echo "  请检查路径。data/raw_cell_datasets/ 下有:"
+    ls -la "$PROJECT_ROOT/data/raw_cell_datasets/" 2>/dev/null || echo "    (目录不存在)"
+    exit 1
+fi
+
+if [ -d "$SR_DIR" ]; then
+    echo "  SR 目录存在: $SR_DIR"
+else
+    echo "  SR 目录不存在 (跳过 SR 处理): $SR_DIR"
+fi
+
+echo "  模型文件: $([ -f "$CKPT" ] && echo '存在' || echo '不存在')"
 
 # ============================================================
 # Step 0: 安装依赖
@@ -133,7 +166,7 @@ echo "  Step 2: 修复 SR 输出强度 (percentile match)"
 echo "============================================"
 
 if [ -d "$SR_DIR" ]; then
-    python scripts/fix_sr_intensity.py \
+    python "$PROJECT_ROOT/scripts/fix_sr_intensity.py" \
         --sr-dir "$SR_DIR" \
         --raw-dir "$RAW_DIR" \
         --output-dir "$SR_FIXED_DIR" \
@@ -151,12 +184,29 @@ echo "============================================"
 echo "  Step 3: 准备 CTransformer 输入数据"
 echo "============================================"
 
-python scripts/prepare_ct_data.py \
+python "$PROJECT_ROOT/scripts/prepare_ct_data.py" \
     --raw-dir "$RAW_DIR" \
     --sr-dir "$SR_FIXED_DIR" \
     --output-dir "$CT_INPUT" \
     --condition "$CONDITION" \
     --target-size 256 384 224
+
+# 验证 prepare_ct_data 输出
+echo ""
+echo "[验证 CT 输入数据]"
+if [ -d "$CT_INPUT" ]; then
+    for d in "$CT_INPUT"/*/; do
+        if [ -d "$d" ]; then
+            embryo=$(basename "$d")
+            memb_n=$(ls "$d/RawMemb"/*.nii.gz 2>/dev/null | wc -l)
+            nuc_n=$(ls "$d/RawNuc"/*.nii.gz 2>/dev/null | wc -l)
+            echo "  $embryo: RawMemb=$memb_n, RawNuc=$nuc_n"
+        fi
+    done
+else
+    echo "  [错误] CT 输入目录未创建: $CT_INPUT"
+    exit 1
+fi
 
 # ============================================================
 # Step 4: 收集 embryo 名称 + 生成配置
@@ -240,7 +290,7 @@ echo "============================================"
 echo "  Step 6: 生成可视化 PNG"
 echo "============================================"
 
-python scripts/visualize_seg.py \
+python "$PROJECT_ROOT/scripts/visualize_seg.py" \
     --seg-root "$SEG_OUTPUT" \
     --data-root "$CT_INPUT" \
     --output "$VIS_OUTPUT"

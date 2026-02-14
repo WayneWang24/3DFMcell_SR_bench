@@ -104,7 +104,24 @@ def resize_and_save(input_path, output_path, target_size):
 
 def prepare_original(raw_dir, embryo_name, output_root, target_size):
     """原始数据: 加载 memb + nuc, resize, 保存"""
-    memb_files = sorted(glob.glob(os.path.join(raw_dir, 'memb_*.nii.gz')))
+    glob_pattern = os.path.join(raw_dir, 'memb_*.nii.gz')
+    memb_files = sorted(glob.glob(glob_pattern))
+
+    print(f'  [DEBUG] raw_dir = {raw_dir}')
+    print(f'  [DEBUG] raw_dir exists = {os.path.exists(raw_dir)}')
+    print(f'  [DEBUG] glob pattern = {glob_pattern}')
+    print(f'  [DEBUG] matched files = {len(memb_files)}')
+    if memb_files:
+        print(f'  [DEBUG] first file = {memb_files[0]}')
+        print(f'  [DEBUG] last file  = {memb_files[-1]}')
+    elif os.path.exists(raw_dir):
+        # 列出目录内容帮助调试
+        all_files = os.listdir(raw_dir)
+        nii_files = [f for f in all_files if f.endswith('.nii.gz')]
+        print(f'  [DEBUG] 目录内 .nii.gz 文件数 = {len(nii_files)}')
+        if nii_files:
+            print(f'  [DEBUG] 前5个: {nii_files[:5]}')
+
     memb_out_dir = os.path.join(output_root, embryo_name, 'RawMemb')
     nuc_out_dir = os.path.join(output_root, embryo_name, 'RawNuc')
     os.makedirs(memb_out_dir, exist_ok=True)
@@ -195,20 +212,20 @@ def main():
     # ============================================================
     if not os.path.exists(args.sr_dir):
         print(f"[警告] SR 目录不存在: {args.sr_dir}")
-        return
+        print(f"  跳过 SR 模型处理，只处理原始数据")
+    else:
+        model_dirs = sorted([
+            d for d in os.listdir(args.sr_dir)
+            if os.path.isdir(os.path.join(args.sr_dir, d))
+        ])
 
-    model_dirs = sorted([
-        d for d in os.listdir(args.sr_dir)
-        if os.path.isdir(os.path.join(args.sr_dir, d))
-    ])
-
-    for model_name in model_dirs:
-        model_path = os.path.join(args.sr_dir, model_name)
-        embryo_sr = f'{args.condition}-{model_name}'.replace('_', '-')
-        print(f'\n[SR 模型] {embryo_sr}')
-        n = prepare_sr(model_path, args.raw_dir, embryo_sr, args.output_dir, target_size)
-        if n > 0:
-            print(f'[SR 模型] {embryo_sr}: {n} 个时间点')
+        for model_name in model_dirs:
+            model_path = os.path.join(args.sr_dir, model_name)
+            embryo_sr = f'{args.condition}-{model_name}'.replace('_', '-')
+            print(f'\n[SR 模型] {embryo_sr}')
+            n = prepare_sr(model_path, args.raw_dir, embryo_sr, args.output_dir, target_size)
+            if n > 0:
+                print(f'[SR 模型] {embryo_sr}: {n} 个时间点')
 
     # ============================================================
     # 3. 汇总
