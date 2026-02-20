@@ -259,8 +259,12 @@ def main():
                         help='CellFate.xls 路径 (可选, 没有则跳过凋亡细胞处理)')
     parser.add_argument('--output', required=True,
                         help='谱系映射输出目录')
-    parser.add_argument('--embryos', nargs='+', required=True,
-                        help='要处理的 embryo 名称列表')
+    parser.add_argument('--embryos', nargs='*', default=None,
+                        help='要处理的 embryo 名称列表 (不指定则自动发现 seg-root 下所有 embryo)')
+    parser.add_argument('--skip-done', action='store_true', default=True,
+                        help='跳过已完成的 embryo (默认开启)')
+    parser.add_argument('--no-skip-done', dest='skip_done', action='store_false',
+                        help='强制重跑所有 embryo')
     parser.add_argument('--workers', type=int, default=None,
                         help='并行 worker 数 (默认 CPU/2)')
     args = parser.parse_args()
@@ -282,6 +286,18 @@ def main():
 
     os.makedirs(args.output, exist_ok=True)
 
+    # 自动发现 embryo 列表
+    if not args.embryos:
+        args.embryos = sorted([
+            d for d in os.listdir(args.seg_root)
+            if os.path.isdir(os.path.join(args.seg_root, d, 'SegCell'))
+        ])
+        print(f'[自动发现] seg-root 下共 {len(args.embryos)} 个 embryo: {args.embryos}')
+
+    skipped = []
+    processed = []
+    failed = []
+
     for embryo_name in args.embryos:
         print(f'\n{"="*60}')
         print(f'  谱系映射: {embryo_name}')
@@ -292,12 +308,23 @@ def main():
         seg_memb_dir = os.path.join(args.seg_root, embryo_name, 'SegMemb')
         if not os.path.exists(seg_cell_dir):
             print(f'  [跳过] SegCell 不存在: {seg_cell_dir}')
+            skipped.append((embryo_name, '无 SegCell'))
             continue
 
         segmented_cell_paths = sorted(glob(os.path.join(seg_cell_dir, '*.nii.gz')), reverse=True)
         if not segmented_cell_paths:
             print(f'  [跳过] SegCell 为空')
+            skipped.append((embryo_name, 'SegCell 为空'))
             continue
+
+        # 跳过已完成的 embryo
+        if args.skip_done:
+            out_dir = os.path.join(args.output, embryo_name)
+            existing_out = glob(os.path.join(out_dir, '*.nii.gz'))
+            if len(existing_out) >= len(segmented_cell_paths):
+                print(f'  [已完成] 输出 {len(existing_out)} 个 >= SegCell {len(segmented_cell_paths)} 个, 跳过')
+                skipped.append((embryo_name, f'已完成 ({len(existing_out)} files)'))
+                continue
 
         # 检查 CD 文件
         cd_file = os.path.join(args.annotated_root, embryo_name, f'CD{embryo_name}.csv')
@@ -308,6 +335,7 @@ def main():
                 cd_file = cd_file_alt
             else:
                 print(f'  [跳过] CD 文件不存在: {cd_file}')
+                skipped.append((embryo_name, '无 CD 文件'))
                 continue
 
         max_time = len(segmented_cell_paths)
@@ -331,6 +359,7 @@ def main():
 
         if not parameters:
             print(f'  [跳过] 没有匹配的 AnnotatedNuc 文件')
+            skipped.append((embryo_name, '无 AnnotatedNuc'))
             continue
 
         n_workers = args.workers or min(len(parameters), max(mp.cpu_count() // 2, 1))
@@ -368,8 +397,17 @@ def main():
         out_files = glob(os.path.join(args.output, embryo_name, '*.nii.gz'))
         map_files = glob(os.path.join(args.output, 'middle_materials', embryo_name, 'mapping', '*.csv'))
         print(f'  完成! 输出: {len(out_files)} 个 NIfTI, {len(map_files)} 个 mapping CSV')
+        processed.append(embryo_name)
 
-    print(f'\n全部完成! 输出目录: {args.output}')
+    # 汇总
+    print(f'\n{"="*60}')
+    print(f'  汇总')
+    print(f'{"="*60}')
+    print(f'  处理: {len(processed)} 个 — {processed}')
+    print(f'  跳过: {len(skipped)} 个 — {skipped}')
+    if failed:
+        print(f'  失败: {len(failed)} 个 — {failed}')
+    print(f'  输出目录: {args.output}')
 
 
 if __name__ == '__main__':
