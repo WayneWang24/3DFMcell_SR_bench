@@ -53,9 +53,16 @@ def combine_division_mp(para):
     seg_bin = (pred_memb_map > 0.93 * pred_memb_map.max()).astype(float)
 
     annotated_nuc = nib_load(annotated_nuc_file_path)
+    seg_cell = nib_load(segmented_cell_file_path)
+
+    # 维度对齐: AnnotatedNuc 可能与 SegCell 尺寸不同
+    if seg_cell.shape != annotated_nuc.shape:
+        from scipy.ndimage import zoom as _zoom
+        scale_factors = tuple(s / a for s, a in zip(seg_cell.shape, annotated_nuc.shape))
+        annotated_nuc = _zoom(annotated_nuc, scale_factors, order=0)
+
     nucleus_marker_footprint = skimage.morphology.ball(7 - int(int(this_tp) / 100))
     annotated_nuc = ndimage.grey_erosion(annotated_nuc, footprint=nucleus_marker_footprint)
-    seg_cell = nib_load(segmented_cell_file_path)
 
     labels = np.unique(annotated_nuc)[1:].tolist()
     processed_labels = []
@@ -117,6 +124,13 @@ def running_reassign_cellular_map(para):
     tp_this_str = os.path.basename(segCellniigzpath).split('_')[1]
     segmented_arr = nib_load(segCellniigzpath).astype(int)
     annotated_nuc_arr = nib_load(annotated_niigz_path).astype(int)
+
+    # 维度对齐: AnnotatedNuc 可能与 SegCell 尺寸不同，需 resize
+    if segmented_arr.shape != annotated_nuc_arr.shape:
+        from scipy.ndimage import zoom
+        scale_factors = tuple(s / a for s, a in zip(segmented_arr.shape, annotated_nuc_arr.shape))
+        annotated_nuc_arr = zoom(annotated_nuc_arr, scale_factors, order=0).astype(int)
+
     nucleus_marker_footprint = skimage.morphology.ball(7 - int(int(tp_this_str) / 100))
     annotated_nuc_arr = ndimage.grey_erosion(annotated_nuc_arr, footprint=nucleus_marker_footprint)
 
@@ -162,11 +176,16 @@ def running_reassign_cellular_map(para):
                         dividing_cells.append(parent_node_this.tag)
                         is_found = True
                 else:
+                    sh = segmented_arr.shape
                     for sx in range(5):
                         for sy in range(5):
                             for sz in range(5):
-                                ti1 = segmented_arr[x_tmp + sx, y_tmp + sy, z_tmp + sz]
-                                ti2 = segmented_arr[x_tmp - sx, y_tmp - sy, z_tmp - sz]
+                                nx1, ny1, nz1 = x_tmp + sx, y_tmp + sy, z_tmp + sz
+                                nx2, ny2, nz2 = x_tmp - sx, y_tmp - sy, z_tmp - sz
+                                ti1 = segmented_arr[nx1, ny1, nz1] \
+                                    if (0 <= nx1 < sh[0] and 0 <= ny1 < sh[1] and 0 <= nz1 < sh[2]) else 0
+                                ti2 = segmented_arr[nx2, ny2, nz2] \
+                                    if (0 <= nx2 < sh[0] and 0 <= ny2 < sh[1] and 0 <= nz2 < sh[2]) else 0
                                 if ti1 != 0 and ti1 not in mapping_cellular_dict:
                                     new_cellular_arr[segmented_arr == ti1] = cell_index
                                     mapping_cellular_dict[int(ti1)] = int(cell_index)
