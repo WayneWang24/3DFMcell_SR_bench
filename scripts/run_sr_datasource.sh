@@ -62,15 +62,15 @@ EXP2_ROOT=$PROJECT_ROOT/scripts/results/exp2_${MODEL}
 case $MODEL in
     edsr)
         CONFIG=$PROJECT_ROOT/configs/edsr_x4_cells_xy.py
-        CKPT=$CKPT_BASE/edsr_x4_cells_xy_p1p99/best_PSNR.pth
+        CKPT=$CKPT_BASE/edsr_x4_cells_fastz_xy_p1p99/best_PSNR_iter_20000.pth
         ;;
     swinir)
         CONFIG=$PROJECT_ROOT/configs/swinir_x4_cells_xy.py
-        CKPT=$CKPT_BASE/swinir_x4_cells_xy/best_PSNR.pth
+        CKPT=$CKPT_BASE/swinir_x4_xy_fastz_200_highL_XY_p1p99/best_PSNR_iter_15000.pth
         ;;
     esrgan)
         CONFIG=$PROJECT_ROOT/configs/esrgan_x4_cells_xy_gan.py
-        CKPT=$CKPT_BASE/esrgan_x4_cells_xy_gan/best_PSNR.pth
+        CKPT=$CKPT_BASE/esrgan_x4_fastz_xy_p1p99/best_PSNR_iter_25000.pth
         ;;
     *)
         echo "[错误] 未知模型: $MODEL (支持: edsr, swinir, esrgan)"
