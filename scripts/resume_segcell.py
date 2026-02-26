@@ -3,9 +3,9 @@
 恢复脚本：只跑 SegCell (membrane→cell watershed)，跳过已完成的，带超时。
 
 用法:
-  cd /home/vm/workspace/3DFMcell_SR_bench
-  python scripts/resume_segcell.py \
-    --seg-root scripts/results/seg_comparison/singleS_xz \
+  cd /home/vm/workspace/3DFMcell_SR_bench/CTransformer
+  python ../scripts/resume_segcell.py \
+    --seg-root ../scripts/results/seg_comparison/singleS_xz \
     --embryos singleS-original singleS-swinir-x4-singleS-xz-p1p99 \
     --timeout 600 \
     --workers 8
@@ -15,13 +15,14 @@ import os
 import sys
 import glob
 import argparse
+import traceback
 import multiprocessing as mp
-from multiprocessing import TimeoutError as MPTimeoutError
 from tqdm import tqdm
 
 # 添加 CTransformer 到路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, os.path.join(PROJECT_ROOT, 'CTransformer'))
+CT_ROOT = os.path.join(PROJECT_ROOT, 'CTransformer')
+sys.path.insert(0, CT_ROOT)
 
 from segmentation_utils.ProcessLib import instance_segmentation_watershed
 
@@ -32,17 +33,13 @@ class FakeArgs(dict):
         return self.get(name)
 
 
-def run_single_with_timeout(pool, func, params, timeout):
-    """用 apply_async + timeout 跑单个任务"""
-    result = pool.apply_async(func, (params,))
+def worker_wrapper(params):
+    """在 worker 中跑并捕获完整 traceback"""
     try:
-        result.get(timeout=timeout)
-        return True
-    except MPTimeoutError:
-        return False
-    except Exception as e:
-        print(f'  [错误] {e}')
-        return False
+        instance_segmentation_watershed(params)
+        return (True, None)
+    except Exception:
+        return (False, traceback.format_exc())
 
 
 def main():
@@ -57,6 +54,9 @@ def main():
                         help='并行 worker 数 (默认 8)')
     args = parser.parse_args()
 
+    # 使用绝对路径
+    seg_root = os.path.abspath(args.seg_root)
+
     integrated_args = FakeArgs({
         'is_nuc_labelled': False,
         'is_nuc_predicted': False,
@@ -64,12 +64,14 @@ def main():
         'is_4D': False,
         'mem_edt_threshold': 9,
         'topology_constraint': False,
-        'output_data_path': args.seg_root,
+        'output_data_path': seg_root,
     })
 
+    # 收集所有待处理任务
+    all_tasks = []
     for embryo in args.embryos:
-        seg_memb_dir = os.path.join(args.seg_root, embryo, 'SegMemb')
-        seg_cell_dir = os.path.join(args.seg_root, embryo, 'SegCell')
+        seg_memb_dir = os.path.join(seg_root, embryo, 'SegMemb')
+        seg_cell_dir = os.path.join(seg_root, embryo, 'SegCell')
         os.makedirs(seg_cell_dir, exist_ok=True)
 
         memb_files = sorted(glob.glob(os.path.join(seg_memb_dir, '*segMemb.nii.gz')))
@@ -77,7 +79,6 @@ def main():
             print(f'[跳过] {embryo}: 没有 SegMemb 文件')
             continue
 
-        # 过滤掉已有 SegCell 的
         todo = []
         for f in memb_files:
             base = os.path.basename(f)
@@ -88,31 +89,48 @@ def main():
                 continue
             todo.append(f)
 
-        print(f'\n[{embryo}] SegMemb={len(memb_files)}, 已完成={len(memb_files)-len(todo)}, 待处理={len(todo)}')
+        print(f'[{embryo}] SegMemb={len(memb_files)}, 已完成={len(memb_files)-len(todo)}, 待处理={len(todo)}')
 
-        if not todo:
-            print(f'  全部已完成，跳过')
-            continue
+        for f in todo:
+            all_tasks.append((embryo, f, seg_cell_dir))
 
-        # 逐个跑，带超时
-        pool = mp.Pool(args.workers)
-        done = 0
-        skipped = 0
-        for f in tqdm(todo, desc=f'{embryo} segCell'):
-            tp_name = "_".join(os.path.basename(f).split("_")[:2])
-            params = [seg_cell_dir, f, None, integrated_args]
-            ok = run_single_with_timeout(pool, instance_segmentation_watershed, params, args.timeout)
-            if ok:
+    if not all_tasks:
+        print('没有待处理任务')
+        return
+
+    print(f'\n总计 {len(all_tasks)} 个任务, workers={args.workers}, timeout={args.timeout}s')
+
+    # 用一个 Pool 处理所有任务，逐个提交带超时
+    pool = mp.Pool(args.workers)
+    done = 0
+    timeout_count = 0
+    error_count = 0
+
+    for embryo, f, seg_cell_dir in tqdm(all_tasks, desc='segCell'):
+        tp_name = "_".join(os.path.basename(f).split("_")[:2])
+        params = [seg_cell_dir, f, None, integrated_args]
+
+        result = pool.apply_async(worker_wrapper, (params,))
+        try:
+            success, tb = result.get(timeout=args.timeout)
+            if success:
                 done += 1
             else:
-                skipped += 1
-                print(f'  [超时/失败] {tp_name} (>{args.timeout}s)，跳过')
+                error_count += 1
+                print(f'\n  [错误] {tp_name}:')
+                print(tb)
+        except mp.TimeoutError:
+            timeout_count += 1
+            print(f'\n  [超时] {tp_name} (>{args.timeout}s)，跳过')
+            # 超时后需要重建 pool，因为 worker 还在跑
+            pool.terminate()
+            pool.join()
+            pool = mp.Pool(args.workers)
 
-        pool.terminate()
-        pool.join()
-        print(f'[{embryo}] 完成={done}, 超时跳过={skipped}')
+    pool.close()
+    pool.join()
 
-    print('\n全部处理完毕!')
+    print(f'\n完成={done}, 超时={timeout_count}, 错误={error_count}')
 
 
 if __name__ == '__main__':
