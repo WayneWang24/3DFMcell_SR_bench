@@ -27,10 +27,13 @@ sys.path.insert(0, CT_ROOT)
 from segmentation_utils.ProcessLib import instance_segmentation_watershed
 
 
-class FakeArgs(dict):
-    """模拟 CTransformer 的 integrated_args"""
-    def __getattr__(self, name):
-        return self.get(name)
+class FakeArgs:
+    """模拟 CTransformer 的 integrated_args，支持 .attr 和 .get() 两种访问"""
+    def __init__(self, d):
+        self.__dict__.update(d)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
 
 
 def worker_wrapper(params):
@@ -48,8 +51,8 @@ def main():
                         help='分割输出根目录 (如 seg_comparison/singleS_xz)')
     parser.add_argument('--embryos', nargs='+', required=True,
                         help='要处理的 embryo 名称列表')
-    parser.add_argument('--timeout', type=int, default=600,
-                        help='每个时间点超时秒数 (默认 600=10分钟)')
+    parser.add_argument('--timeout', type=int, default=1800,
+                        help='每个时间点超时秒数 (默认 1800=30分钟)')
     parser.add_argument('--workers', type=int, default=8,
                         help='并行 worker 数 (默认 8)')
     args = parser.parse_args()
