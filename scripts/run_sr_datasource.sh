@@ -21,6 +21,9 @@
 #
 # 只跑 SegCell 恢复:
 #   bash scripts/run_sr_datasource.sh edsr 0 --resume-segcell
+#
+# 保留中间文件 (默认自动清理):
+#   bash scripts/run_sr_datasource.sh edsr 0 --keep
 # =============================================================
 set -e
 
@@ -32,15 +35,33 @@ GPU_ID=${2:-0}
 
 FROM_STAGE=1
 RESUME_SEGCELL=false
+KEEP_INTERMEDIATES=false
 
 shift 2 2>/dev/null || true
 while [ $# -gt 0 ]; do
     case "$1" in
         --from)   FROM_STAGE=$2; shift 2 ;;
         --resume-segcell) RESUME_SEGCELL=true; shift ;;
+        --keep)   KEEP_INTERMEDIATES=true; shift ;;
         *)        shift ;;
     esac
 done
+
+# 清理中间产物的函数
+cleanup_intermediate() {
+    local DIR="$1"
+    local LABEL="$2"
+    if [ "$KEEP_INTERMEDIATES" = true ]; then
+        echo "  [保留] $LABEL: $DIR (--keep)"
+        return
+    fi
+    if [ -d "$DIR" ]; then
+        local SIZE=$(du -sh "$DIR" 2>/dev/null | cut -f1)
+        echo "  [清理] $LABEL: $DIR ($SIZE)"
+        rm -rf "$DIR"
+        echo "  [已释放] $SIZE"
+    fi
+}
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 CT_ROOT=$PROJECT_ROOT/CTransformer
@@ -95,6 +116,7 @@ echo "  GPU:       $GPU_ID"
 echo "  胚胎数:    $EMBRYO_COUNT"
 echo "  输出根:    $EXP2_ROOT"
 echo "  起始阶段:  Stage $FROM_STAGE"
+echo "  保留中间:  $KEEP_INTERMEDIATES"
 echo "============================================"
 
 # 检查关键文件
@@ -268,6 +290,10 @@ for embryo in $EMBRYO_LIST; do
 done
 
 echo "Stage 2 完成"
+
+# 清理 Stage 1 中间产物 (sr_output → sr_fixed 后不再需要)
+cleanup_intermediate "$EXP2_ROOT/sr_output" "sr_output (Stage 1 中间产物)"
+
 fi
 
 # ============================================================
@@ -286,6 +312,10 @@ python "$PROJECT_ROOT/scripts/prepare_ct_data_datasource.py" \
     --target-size 256 384 224
 
 echo "Stage 3 完成"
+
+# 清理 Stage 2 中间产物 (sr_fixed → ct_input 后不再需要)
+cleanup_intermediate "$EXP2_ROOT/sr_fixed" "sr_fixed (Stage 2 中间产物)"
+
 fi
 
 # ============================================================
@@ -416,6 +446,10 @@ YAMLEOF
 fi
 
 echo "Stage 4 完成"
+
+# 清理 Stage 3 中间产物 (ct_input → seg 后不再需要)
+cleanup_intermediate "$EXP2_ROOT/ct_input" "ct_input (Stage 3 中间产物)"
+
 fi
 
 # ============================================================
@@ -453,9 +487,13 @@ echo "============================================"
 echo "  输出根目录: $EXP2_ROOT"
 echo ""
 echo "  目录结构:"
+if [ "$KEEP_INTERMEDIATES" = true ]; then
 echo "    sr_output/{embryo}/*.nii.gz        — SR 超分输出"
 echo "    sr_fixed/{embryo}/*.nii.gz         — 强度修复后"
 echo "    ct_input/{embryo}/RawMemb+RawNuc/  — CTransformer 输入"
+else
+echo "    (sr_output, sr_fixed, ct_input 已自动清理)"
+fi
 echo "    seg/{embryo}/SegMemb+SegCell/      — 分割结果"
 echo "    lineage/{embryo}/                  — 谱系映射结果"
 echo ""
