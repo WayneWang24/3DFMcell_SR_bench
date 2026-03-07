@@ -103,33 +103,51 @@ def main():
 
     print(f'\n总计 {len(all_tasks)} 个任务, workers={args.workers}, timeout={args.timeout}s')
 
-    # 用一个 Pool 处理所有任务，逐个提交带超时
+    # 批量提交，每批 workers 个任务真正并行
     pool = mp.Pool(args.workers)
     done = 0
     timeout_count = 0
     error_count = 0
+    batch_size = args.workers
 
-    for embryo, f, seg_cell_dir in tqdm(all_tasks, desc='segCell'):
-        tp_name = "_".join(os.path.basename(f).split("_")[:2])
-        params = [seg_cell_dir, f, None, integrated_args]
+    pbar = tqdm(total=len(all_tasks), desc='segCell')
 
-        result = pool.apply_async(worker_wrapper, (params,))
-        try:
-            success, tb = result.get(timeout=args.timeout)
-            if success:
-                done += 1
-            else:
-                error_count += 1
-                print(f'\n  [错误] {tp_name}:')
-                print(tb)
-        except mp.TimeoutError:
-            timeout_count += 1
-            print(f'\n  [超时] {tp_name} (>{args.timeout}s)，跳过')
-            # 超时后需要重建 pool，因为 worker 还在跑
+    for batch_start in range(0, len(all_tasks), batch_size):
+        batch = all_tasks[batch_start:batch_start + batch_size]
+
+        # 提交整批任务（并行执行）
+        pending = []
+        for embryo, f, seg_cell_dir in batch:
+            tp_name = "_".join(os.path.basename(f).split("_")[:2])
+            params = [seg_cell_dir, f, None, integrated_args]
+            ar = pool.apply_async(worker_wrapper, (params,))
+            pending.append((tp_name, ar))
+
+        # 收集本批结果
+        had_timeout = False
+        for tp_name, ar in pending:
+            try:
+                success, tb = ar.get(timeout=args.timeout)
+                if success:
+                    done += 1
+                else:
+                    error_count += 1
+                    print(f'\n  [错误] {tp_name}:')
+                    print(tb)
+            except mp.TimeoutError:
+                timeout_count += 1
+                print(f'\n  [超时] {tp_name} (>{args.timeout}s)')
+                had_timeout = True
+
+        # 超时后重建 pool（杀掉卡住的 worker）
+        if had_timeout:
             pool.terminate()
             pool.join()
             pool = mp.Pool(args.workers)
 
+        pbar.update(len(batch))
+
+    pbar.close()
     pool.close()
     pool.join()
 
