@@ -41,7 +41,7 @@ shift 2 2>/dev/null || true
 while [ $# -gt 0 ]; do
     case "$1" in
         --from)   FROM_STAGE=$2; shift 2 ;;
-        --resume-segcell) RESUME_SEGCELL=true; shift ;;
+        --resume-segcell) RESUME_SEGCELL=true; FROM_STAGE=99; shift ;;
         --keep)   KEEP_INTERMEDIATES=true; shift ;;
         *)        shift ;;
     esac
